@@ -1,0 +1,8 @@
+module github.com/blubskye/discord2stoat
+
+go 1.23.0
+
+replace (
+	github.com/fluxergo/fluxergo => ./fluxergo
+	github.com/sentinelb51/revoltgo => ./revoltgo
+)

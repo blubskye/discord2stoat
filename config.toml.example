@@ -1,0 +1,15 @@
+# discord2stoat configuration
+# Copy this file to config.toml and fill in your tokens.
+
+discord_token     = "Bot YOUR_DISCORD_BOT_TOKEN"
+discord_server_id = "YOUR_DISCORD_SERVER_ID"
+
+# Enable Stoat target (remove or leave token empty to skip)
+[stoat]
+token     = "YOUR_STOAT_BOT_TOKEN"
+server_id = "YOUR_STOAT_SERVER_ID"
+
+# Enable Fluxer target (remove or leave token empty to skip)
+[fluxer]
+token     = "YOUR_FLUXER_BOT_TOKEN"
+server_id = "YOUR_FLUXER_SERVER_ID"
