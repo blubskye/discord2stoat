@@ -196,6 +196,7 @@ func (a *Adapter) SendMessage(channelID string, msg normalized.Message) error {
 	}
 
 	// Upload attachments to Autumn CDN and collect IDs.
+	// Failed uploads are logged and skipped; the message is still sent with remaining attachments.
 	var fileIDs []string
 	for _, att := range msg.Attachments {
 		fa, err := a.session.AttachmentUpload(&revoltgo.File{
@@ -207,6 +208,11 @@ func (a *Adapter) SendMessage(channelID string, msg normalized.Message) error {
 			continue
 		}
 		fileIDs = append(fileIDs, fa.ID)
+	}
+
+	// Skip entirely if there is nothing to send.
+	if content == "" && len(fileIDs) == 0 {
+		return nil
 	}
 
 	_, err := a.session.ChannelMessageSend(channelID, revoltgo.MessageSend{
