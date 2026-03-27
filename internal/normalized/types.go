@@ -13,7 +13,7 @@ const (
 
 // Role is a normalized Discord role for writing to a target platform.
 type Role struct {
-	DiscordID   string
+	DiscordID   string // source ID; used by orchestrator to build discordID→targetID map; never read by adapters
 	Name        string
 	Color       int   // Discord int color (e.g. 0xFF5733)
 	Permissions int64 // Discord permission bit flags
@@ -23,7 +23,7 @@ type Role struct {
 
 // Channel is a normalized Discord channel for writing to a target platform.
 type Channel struct {
-	DiscordID  string
+	DiscordID  string // source ID; used by orchestrator to build discordID→targetID map; never read by adapters
 	Name       string
 	Type       ChannelType
 	Topic      string
