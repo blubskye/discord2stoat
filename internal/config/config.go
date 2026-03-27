@@ -7,6 +7,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// Config holds all parsed configuration.
 type Config struct {
 	DiscordToken    string `toml:"discord_token"`
 	DiscordServerID string `toml:"discord_server_id"`
@@ -14,6 +15,7 @@ type Config struct {
 	Fluxer          *PlatformConfig
 }
 
+// PlatformConfig holds credentials for a single target platform.
 type PlatformConfig struct {
 	Token    string `toml:"token"`
 	ServerID string `toml:"server_id"`
@@ -26,6 +28,8 @@ type rawConfig struct {
 	Fluxer          *PlatformConfig `toml:"fluxer"`
 }
 
+// Load parses config.toml at path and returns a validated Config.
+// Returns an error if no target platform is configured.
 func Load(path string) (*Config, error) {
 	var raw rawConfig
 	if _, err := toml.DecodeFile(path, &raw); err != nil {
