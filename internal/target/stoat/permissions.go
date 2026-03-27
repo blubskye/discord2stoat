@@ -33,6 +33,9 @@ var discordToRevolt = map[int64]int64{
 
 // mapPermissions converts Discord allow/deny int64 permission bits to Revolt
 // PermissionOverwrite Allow/Deny values. Unknown Discord bits are silently ignored.
+// If the same bit appears in both discordAllow and discordDeny, both output words
+// will have the corresponding Revolt bit set; the caller is responsible for resolving
+// the conflict according to the target platform's precedence rules.
 func mapPermissions(discordAllow, discordDeny int64) (allow, deny int64) {
 	for discordPerm, revoltPerm := range discordToRevolt {
 		if discordAllow&discordPerm != 0 {

@@ -34,6 +34,7 @@ func TestMapPermissions_DenyOverride(t *testing.T) {
 
 func TestMapPermissions_UnknownBitsIgnored(t *testing.T) {
 	allow, deny := mapPermissions(int64(1<<62), 0)
-	_ = allow
-	_ = deny
+	if allow != 0 || deny != 0 {
+		t.Errorf("expected zero outputs for unknown bits, got allow=%d deny=%d", allow, deny)
+	}
 }
