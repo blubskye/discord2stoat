@@ -90,7 +90,7 @@ func (a *Adapter) CreateChannel(c normalized.Channel) (string, error) {
 			ParentID: parentID,
 			NSFW:     c.NSFW,
 		}
-	default: // text
+	case normalized.ChannelTypeText:
 		parentID, err := parseOptionalSnowflake(c.ParentID)
 		if err != nil {
 			return "", err
@@ -102,6 +102,8 @@ func (a *Adapter) CreateChannel(c normalized.Channel) (string, error) {
 			ParentID: parentID,
 			NSFW:     c.NSFW,
 		}
+	default:
+		return "", fmt.Errorf("fluxer CreateChannel: unsupported channel type %d", c.Type)
 	}
 
 	ch, err := a.guilds.CreateGuildChannel(a.guildID, create)
@@ -166,13 +168,13 @@ func (a *Adapter) SendMessage(channelID string, msg normalized.Message) error {
 	if err != nil {
 		return fmt.Errorf("fluxer SendMessage: invalid channel ID %q: %w", channelID, err)
 	}
+	// Skip if there is nothing to send (check before building prefix).
+	if msg.Content == "" && len(msg.Attachments) == 0 {
+		return nil
+	}
 	content := msg.Content
 	if msg.AuthorName != "" {
 		content = fmt.Sprintf("[%s]: %s", msg.AuthorName, msg.Content)
-	}
-	// Skip if there is nothing to send.
-	if content == "" && len(msg.Attachments) == 0 {
-		return nil
 	}
 	mc := fluxer.MessageCreate{Content: content}
 	for _, att := range msg.Attachments {
@@ -185,6 +187,8 @@ func (a *Adapter) SendMessage(channelID string, msg normalized.Message) error {
 	return nil
 }
 
+// parseOptionalSnowflake parses a snowflake ID string. An empty string returns
+// the zero snowflake.ID (0), which the Fluxer API treats as "no parent".
 func parseOptionalSnowflake(id string) (snowflake.ID, error) {
 	if id == "" {
 		return 0, nil
