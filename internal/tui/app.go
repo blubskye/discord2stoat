@@ -33,6 +33,7 @@ type AppModel struct {
 	pauser         *pipeline.Pauser
 	progressCh     chan pipeline.ProgressEvent
 	pipelineRunner PipelineRunner
+	targetNames    []string
 }
 
 // AppConfig holds everything the TUI needs to start.
@@ -45,10 +46,15 @@ type AppConfig struct {
 
 // NewApp creates the root model starting at the confirm screen.
 func NewApp(cfg AppConfig) AppModel {
+	names := make([]string, 0, len(cfg.Targets))
+	for name := range cfg.Targets {
+		names = append(names, name)
+	}
 	return AppModel{
-		current:   screenConfirm,
-		confirm:   NewConfirmModel(cfg.ConfirmEntries),
-		configure: NewConfigureModel(cfg.Channels),
+		current:     screenConfirm,
+		confirm:     NewConfirmModel(cfg.ConfirmEntries),
+		configure:   NewConfigureModel(cfg.Channels),
+		targetNames: names,
 	}
 }
 
@@ -120,15 +126,36 @@ func (m *AppModel) startPipeline() tea.Cmd {
 			log.Println("pipeline started (stub)")
 		}()
 	}
-	m.progress = buildProgressModel(m.progressCh)
+	m.progress = buildProgressModel(m.progressCh, m.configure.groups, m.targetNames)
 	return m.progress.WaitForEvent()
 }
 
-func buildProgressModel(ch chan pipeline.ProgressEvent) ProgressModel {
+func buildProgressModel(ch chan pipeline.ProgressEvent, groups []CategoryGroup, targetNames []string) ProgressModel {
+	channels := make(map[string]*channelState)
+	var channelOrder []string
+	var categories []categoryProgress
+
+	for _, g := range groups {
+		cat := categoryProgress{name: g.Name}
+		for _, row := range g.Channels {
+			channels[row.DiscordID] = &channelState{
+				name:      row.Name,
+				postCount: make(map[string]int),
+				postTotal: make(map[string]int),
+			}
+			channelOrder = append(channelOrder, row.DiscordID)
+			cat.channelIDs = append(cat.channelIDs, row.DiscordID)
+		}
+		categories = append(categories, cat)
+	}
+
 	return ProgressModel{
-		channels:   make(map[string]*channelState),
-		structDone: make(map[string]bool),
-		progressCh: ch,
+		channels:     channels,
+		channelOrder: channelOrder,
+		categories:   categories,
+		targets:      targetNames,
+		structDone:   make(map[string]bool),
+		progressCh:   ch,
 	}
 }
 

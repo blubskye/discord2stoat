@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/blubskye/discord2stoat/internal/debug"
 	"github.com/blubskye/discord2stoat/internal/normalized"
 	"github.com/blubskye/discord2stoat/internal/target"
 )
@@ -158,6 +159,7 @@ func runChannelWorker(
 		}
 
 		fetched++
+		debug.Printf("channel %s: fetched message %d (total so far: %d)", ch.ID, fetched, fetched)
 		progressCh <- ProgressEvent{
 			Kind:      EventChannelFetch,
 			ChannelID: ch.ID,
@@ -221,6 +223,7 @@ func runChannelWorker(
 				return fmt.Errorf("[%s] SendMessage: %w", name, err)
 			}
 			posted[name]++
+			debug.Printf("channel %s: posted message %d to %s", ch.ID, posted[name], name)
 			progressCh <- ProgressEvent{
 				Kind:       EventChannelPost,
 				TargetName: name,

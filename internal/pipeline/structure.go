@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/blubskye/discord2stoat/internal/debug"
 	"github.com/blubskye/discord2stoat/internal/normalized"
 	"github.com/blubskye/discord2stoat/internal/target"
 )
@@ -41,6 +42,7 @@ func RunPhaseA(
 	sort.Slice(roles, func(i, j int) bool {
 		return roles[i].Position < roles[j].Position
 	})
+	debug.Printf("[%s] Phase A: creating %d roles", targetName, len(roles))
 	for _, r := range roles {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -61,6 +63,7 @@ func RunPhaseA(
 			return nil, fmt.Errorf("phaseA[%s] CreateRole %q: %w", targetName, r.Name, err)
 		}
 		result.RoleIDs[r.ID] = newID
+		debug.Printf("[%s] role %q created as %s", targetName, r.Name, newID)
 		progressCh <- ProgressEvent{
 			Kind:       EventRoleCreated,
 			TargetName: targetName,
@@ -107,6 +110,7 @@ func RunPhaseA(
 			return nil, fmt.Errorf("phaseA[%s] CreateChannel category %q: %w", targetName, ch.Name, err)
 		}
 		result.ChannelIDs[ch.ID] = newID
+		debug.Printf("[%s] channel %q created as %s", targetName, ch.Name, newID)
 	}
 
 	// --- Step 4: Create text and voice channels ---
@@ -143,6 +147,7 @@ func RunPhaseA(
 			return nil, fmt.Errorf("phaseA[%s] CreateChannel %q: %w", targetName, ch.Name, err)
 		}
 		result.ChannelIDs[ch.ID] = newID
+		debug.Printf("[%s] channel %q created as %s", targetName, ch.Name, newID)
 	}
 
 	// --- Step 5: Set channel order ---

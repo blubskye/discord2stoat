@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/blubskye/discord2stoat/internal/config"
+	"github.com/blubskye/discord2stoat/internal/debug"
 	"github.com/blubskye/discord2stoat/internal/discord"
 	"github.com/blubskye/discord2stoat/internal/pipeline"
 	"github.com/blubskye/discord2stoat/internal/target"
@@ -17,13 +19,26 @@ import (
 )
 
 func main() {
+	debugFlag := flag.Bool("debug", false, "enable verbose debug logging to discord2stoat.log")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: discord2stoat [--debug] [version]\n\n")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
 	logFile, err := os.OpenFile("discord2stoat.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err == nil {
 		log.SetOutput(logFile)
 		defer logFile.Close()
 	}
 
-	if len(os.Args) > 1 && os.Args[1] == "version" {
+	if *debugFlag {
+		debug.Enabled = true
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+		log.Printf("debug logging enabled")
+	}
+
+	if flag.NArg() > 0 && flag.Arg(0) == "version" {
 		fmt.Printf("discord2stoat %s\n  commit:  %s\n  source:  https://github.com/blubskye/discord2stoat\n  license: AGPL-3.0\n",
 			version, commit)
 		return
@@ -96,16 +111,26 @@ func main() {
 	app := tui.NewApp(appCfg)
 	app.SetPipelineRunner(func(channelCfgs map[string]pipeline.ChannelConfig) {
 		go func() {
-			defer close(progressCh)
-			err := pipeline.Run(ctx, pipeline.RunConfig{
+			var runErr error
+			defer func() {
+				if runErr != nil {
+					select {
+					case progressCh <- pipeline.ProgressEvent{Kind: pipeline.EventPipelineError, Err: runErr}:
+					default:
+					}
+				}
+				close(progressCh)
+			}()
+			debug.Printf("pipeline starting")
+			runErr = pipeline.Run(ctx, pipeline.RunConfig{
 				Targets:     targets,
 				Discord:     discordClient,
 				ChannelCfgs: channelCfgs,
 				ProgressCh:  progressCh,
 				Pauser:      pauser,
 			})
-			if err != nil {
-				log.Printf("pipeline error: %v", err)
+			if runErr != nil {
+				log.Printf("pipeline error: %v", runErr)
 			}
 		}()
 	})

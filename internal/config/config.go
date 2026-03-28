@@ -48,6 +48,13 @@ func Load(path string) (*Config, error) {
 		cfg.Fluxer = raw.Fluxer
 	}
 
+	if cfg.DiscordToken == "" {
+		return nil, errors.New("config: discord_token is required")
+	}
+	if cfg.DiscordServerID == "" {
+		return nil, errors.New("config: discord_server_id is required")
+	}
+
 	if cfg.Stoat == nil && cfg.Fluxer == nil {
 		return nil, errors.New("config: at least one target ([stoat] or [fluxer]) must have a non-empty token")
 	}

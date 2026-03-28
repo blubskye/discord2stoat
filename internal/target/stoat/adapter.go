@@ -176,9 +176,10 @@ func (a *Adapter) SetChannelPermissions(channelID string, overwrites []normalize
 		if ow.RoleID == "" {
 			continue
 		}
+		allow, deny := mapPermissions(ow.Allow, ow.Deny)
 		err := a.session.ChannelPermissionsSet(channelID, ow.RoleID, revoltgo.PermissionOverwrite{
-			Allow: ow.Allow,
-			Deny:  ow.Deny,
+			Allow: allow,
+			Deny:  deny,
 		})
 		if err != nil {
 			return fmt.Errorf("stoat SetChannelPermissions channel=%s role=%s: %w", channelID, ow.RoleID, err)

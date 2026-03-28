@@ -38,9 +38,10 @@ type ProgressModel struct {
 	rolesTotal   int
 	structDone   map[string]bool
 
-	targets   []string
-	paused    bool
-	cancelled bool
+	targets     []string
+	paused      bool
+	cancelled   bool
+	pipelineErr error
 
 	progressCh <-chan pipeline.ProgressEvent
 }
@@ -138,6 +139,8 @@ func (m *ProgressModel) applyEvent(e pipeline.ProgressEvent) {
 		if s, ok := m.channels[e.ChannelID]; ok {
 			s.err = e.Err
 		}
+	case pipeline.EventPipelineError:
+		m.pipelineErr = e.Err
 	}
 }
 
@@ -180,6 +183,10 @@ func (m ProgressModel) View() string {
 			sb.WriteString(m.renderChannelRow(s) + "\n")
 		}
 		sb.WriteString("\n")
+	}
+
+	if m.pipelineErr != nil {
+		sb.WriteString("\n" + errorStyle.Render("Pipeline error: "+m.pipelineErr.Error()) + "\n")
 	}
 
 	pauseLabel := "[P]ause"

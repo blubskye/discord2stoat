@@ -11,6 +11,7 @@ const (
 	EventChannelDone                      // channel fully complete on a target
 	EventChannelError                     // a channel encountered an error
 	EventPhaseBDone                       // all channels complete for a target
+	EventPipelineError                    // fatal pipeline error (Phase A failure)
 )
 
 // ProgressEvent is emitted by workers and consumed by the TUI.
