@@ -37,14 +37,17 @@ type ProgressModel struct {
 	channelOrder []string
 	categories   []categoryProgress
 
-	rolesCreated int
-	rolesTotal   int
+	rolesCreated map[string]int // targetName → count
+	rolesTotal   map[string]int // targetName → total
 	structDone   map[string]bool
 
 	targets     []string
 	paused      bool
 	cancelled   bool
 	pipelineErr error
+
+	scrollOffset int
+	termHeight   int
 
 	progressCh <-chan pipeline.ProgressEvent
 }
@@ -62,11 +65,13 @@ func NewProgressModel(
 	channels []*struct{ ID, Name string },
 ) ProgressModel {
 	m := ProgressModel{
-		channels:   make(map[string]*channelState),
-		targets:    targets,
-		structDone: make(map[string]bool),
-		categories: categories,
-		progressCh: progressCh,
+		channels:     make(map[string]*channelState),
+		targets:      targets,
+		structDone:   make(map[string]bool),
+		rolesCreated: make(map[string]int),
+		rolesTotal:   make(map[string]int),
+		categories:   categories,
+		progressCh:   progressCh,
 	}
 	for _, ch := range channels {
 		m.channels[ch.ID] = &channelState{
@@ -105,8 +110,25 @@ func (m ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Pipeline finished; stop listening for events.
 		return m, nil
 
+	case tea.WindowSizeMsg:
+		m.termHeight = msg.Height
+
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "up", "k":
+			if m.scrollOffset > 0 {
+				m.scrollOffset--
+			}
+		case "down", "j":
+			m.scrollOffset++
+		case "pgup":
+			if m.scrollOffset > 10 {
+				m.scrollOffset -= 10
+			} else {
+				m.scrollOffset = 0
+			}
+		case "pgdown":
+			m.scrollOffset += 10
 		case "p":
 			m.paused = !m.paused
 		case "c", "ctrl+c", "q":
@@ -120,8 +142,8 @@ func (m ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *ProgressModel) applyEvent(e pipeline.ProgressEvent) {
 	switch e.Kind {
 	case pipeline.EventRoleCreated:
-		m.rolesCreated++
-		m.rolesTotal = e.RolesTotal
+		m.rolesCreated[e.TargetName]++
+		m.rolesTotal[e.TargetName] = e.RolesTotal
 	case pipeline.EventStructureDone:
 		m.structDone[e.TargetName] = true
 	case pipeline.EventChannelFetch:
@@ -150,10 +172,14 @@ func (m *ProgressModel) applyEvent(e pipeline.ProgressEvent) {
 func (m ProgressModel) View() string {
 	var sb strings.Builder
 
-	if m.rolesTotal > 0 {
-		sb.WriteString(renderBar("Roles", m.rolesCreated, m.rolesTotal) + "\n")
+	// Fixed header (always shown).
+	headerLines := 0
+	for _, name := range m.targets {
+		if total := m.rolesTotal[name]; total > 0 {
+			sb.WriteString(renderBar("Roles ("+name+")", m.rolesCreated[name], total) + "\n")
+			headerLines++
+		}
 	}
-
 	structLine := "Structure  "
 	allStructDone := len(m.structDone) == len(m.targets) && len(m.targets) > 0
 	if allStructDone {
@@ -162,7 +188,10 @@ func (m ProgressModel) View() string {
 		structLine += inProgressStyle
 	}
 	sb.WriteString(structLine + "\n\n")
+	headerLines += 2
 
+	// Build all content lines.
+	var lines []string
 	for _, cat := range m.categories {
 		totalFetch, totalPost := 0, 0
 		for _, id := range cat.channelIDs {
@@ -173,30 +202,55 @@ func (m ProgressModel) View() string {
 				}
 			}
 		}
-		sb.WriteString(fmt.Sprintf("▼ %s   %s / %s msgs posted\n",
+		lines = append(lines, fmt.Sprintf("▼ %s   %s / %s msgs posted",
 			categoryStyle.Render(cat.name),
 			formatCount(totalPost),
 			formatCount(totalFetch),
 		))
 		for _, id := range cat.channelIDs {
-			s, ok := m.channels[id]
-			if !ok {
-				continue
+			if s, ok := m.channels[id]; ok {
+				lines = append(lines, m.renderChannelRow(s))
 			}
-			sb.WriteString(m.renderChannelRow(s) + "\n")
 		}
-		sb.WriteString("\n")
+		lines = append(lines, "")
 	}
 
+	// Fixed footer (always shown).
+	footerLines := 1 // buttons line
+	if m.pipelineErr != nil {
+		footerLines += 2 // blank + error line
+	}
+
+	// Determine visible window.
+	available := len(lines)
+	if m.termHeight > 0 {
+		avail := m.termHeight - headerLines - footerLines
+		if avail < 1 {
+			avail = 1
+		}
+		available = avail
+	}
+	start := m.scrollOffset
+	if start > len(lines) {
+		start = len(lines)
+	}
+	end := start + available
+	if end > len(lines) {
+		end = len(lines)
+	}
+	for _, line := range lines[start:end] {
+		sb.WriteString(line + "\n")
+	}
+
+	// Footer.
 	if m.pipelineErr != nil {
 		sb.WriteString("\n" + errorStyle.Render("Pipeline error: "+m.pipelineErr.Error()) + "\n")
 	}
-
 	pauseLabel := "[P]ause"
 	if m.paused {
 		pauseLabel = "[P]Resume"
 	}
-	sb.WriteString(buttonStyle.Render(pauseLabel) + "  " + buttonStyle.Render("[C]ancel"))
+	sb.WriteString(buttonStyle.Render(pauseLabel) + "  " + buttonStyle.Render("[C]ancel") + "  ↑↓/j/k or PgUp/PgDn scroll")
 	return sb.String()
 }
 
@@ -222,6 +276,9 @@ func renderBar(label string, done, total int) string {
 	filled := 0
 	if total > 0 {
 		filled = done * width / total
+		if filled > width {
+			filled = width
+		}
 	}
 	bar := strings.Repeat(progressBarFull, filled) + strings.Repeat(progressBarEmpty, width-filled)
 	return fmt.Sprintf("%-12s %s  %d / %d", label, bar, done, total)

@@ -19,12 +19,15 @@ var (
 	overrideMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Render(" *")
 	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
 	selectAllStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("220"))
+	skipStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("160")).Bold(true)
+	skipDimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
 )
 
 // ChanConfig is the user-editable config for one channel.
 type ChanConfig struct {
 	Attribution  pipeline.AttributionMode
 	MessageLimit int  // 0 = all
+	Skip         bool // true = don't create or mirror this channel
 	Overridden   bool // true if manually changed from category default
 }
 
@@ -45,6 +48,11 @@ type ChannelRow struct {
 	Config    ChanConfig
 }
 
+// configHeaderLines and configFooterLines are the fixed line counts above/below
+// the scrollable content area in the configure screen.
+const configHeaderLines = 2 // title + blank line
+const configFooterLines = 3 // blank + buttons line + help text line
+
 // ConfigureModel is the bubbletea model for Screen 2.
 type ConfigureModel struct {
 	// selectAll holds the global default.
@@ -56,6 +64,8 @@ type ConfigureModel struct {
 	editField    int // 0=attribution, 1=limit
 	editingLimit bool
 	limitInput   string
+	scrollOffset int
+	termHeight   int
 }
 
 type configRowKind int
@@ -134,12 +144,32 @@ func (m *ConfigureModel) rebuildFlat() {
 	}
 }
 
+// ensureVisible adjusts scrollOffset so the cursor row is within the visible window.
+func (m *ConfigureModel) ensureVisible() {
+	if m.termHeight == 0 {
+		return
+	}
+	available := m.termHeight - configHeaderLines - configFooterLines
+	if available < 1 {
+		available = 1
+	}
+	if m.cursor < m.scrollOffset {
+		m.scrollOffset = m.cursor
+	} else if m.cursor >= m.scrollOffset+available {
+		m.scrollOffset = m.cursor - available + 1
+	}
+}
+
 func (m ConfigureModel) Init() tea.Cmd { return nil }
 
 func (m ConfigureModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	row := m.flat[m.cursor]
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.termHeight = msg.Height
+		m.ensureVisible()
+
 	case tea.KeyMsg:
 		if m.editingLimit {
 			switch msg.String() {
@@ -166,11 +196,29 @@ func (m ConfigureModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				m.ensureVisible()
 			}
 		case "down", "j":
 			if m.cursor < len(m.flat)-1 {
 				m.cursor++
+				m.ensureVisible()
 			}
+		case "pgup":
+			step := 10
+			if m.cursor >= step {
+				m.cursor -= step
+			} else {
+				m.cursor = 0
+			}
+			m.ensureVisible()
+		case "pgdown":
+			step := 10
+			if m.cursor+step < len(m.flat) {
+				m.cursor += step
+			} else {
+				m.cursor = len(m.flat) - 1
+			}
+			m.ensureVisible()
 		case "left", "h":
 			if row.kind == rowCategory {
 				m.groups[row.groupIdx].Collapsed = true
@@ -189,6 +237,8 @@ func (m ConfigureModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editField = (m.editField + 1) % 2
 		case "enter", " ":
 			m.toggleField(row)
+		case "x":
+			m.toggleSkip(row)
 		case "s":
 			return m, func() tea.Msg { return msgStartClone{} }
 		case "b":
@@ -198,6 +248,38 @@ func (m ConfigureModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// toggleSkip flips the Skip flag on the current row and propagates to children.
+func (m *ConfigureModel) toggleSkip(row configRow) {
+	cfg := m.getConfig(row)
+	cfg.Skip = !cfg.Skip
+	m.setConfig(row, cfg, true)
+	if row.kind == rowCategory || row.kind == rowSelectAll {
+		m.propagateSkipToChildren(row, cfg.Skip)
+	}
+}
+
+// propagateSkipToChildren sets Skip on all non-overridden children of a category/selectAll row.
+func (m *ConfigureModel) propagateSkipToChildren(row configRow, skip bool) {
+	if row.kind == rowSelectAll {
+		for gi := range m.groups {
+			if !m.groups[gi].Overridden {
+				m.groups[gi].Config.Skip = skip
+				for ci := range m.groups[gi].Channels {
+					if !m.groups[gi].Channels[ci].Config.Overridden {
+						m.groups[gi].Channels[ci].Config.Skip = skip
+					}
+				}
+			}
+		}
+		return
+	}
+	for ci := range m.groups[row.groupIdx].Channels {
+		if !m.groups[row.groupIdx].Channels[ci].Config.Overridden {
+			m.groups[row.groupIdx].Channels[ci].Config.Skip = skip
+		}
+	}
 }
 
 func (m *ConfigureModel) toggleField(row configRow) {
@@ -293,6 +375,7 @@ func (m ConfigureModel) ExportChannelConfigs() map[string]pipeline.ChannelConfig
 			out[ch.DiscordID] = pipeline.ChannelConfig{
 				Attribution:  ch.Config.Attribution,
 				MessageLimit: ch.Config.MessageLimit,
+				Skip:         ch.Config.Skip,
 			}
 		}
 	}
@@ -303,7 +386,23 @@ func (m ConfigureModel) View() string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("Configure clone") + "\n\n")
 
-	for i, row := range m.flat {
+	// Determine the visible window of rows.
+	available := len(m.flat)
+	if m.termHeight > 0 {
+		avail := m.termHeight - configHeaderLines - configFooterLines
+		if avail < 1 {
+			avail = 1
+		}
+		available = avail
+	}
+	start := m.scrollOffset
+	end := start + available
+	if end > len(m.flat) {
+		end = len(m.flat)
+	}
+
+	for i := start; i < end; i++ {
+		row := m.flat[i]
 		cursor := "  "
 		if i == m.cursor {
 			cursor = cursorStyle.Render("▶ ")
@@ -319,20 +418,30 @@ func (m ConfigureModel) View() string {
 			if g.Collapsed {
 				arrow = "▶"
 			}
-			sb.WriteString(cursor + categoryStyle.Render(fmt.Sprintf("%s %s", arrow, g.Name)) + "  " + m.renderFields(g.Config, i == m.cursor) + "\n")
+			catLabel := fmt.Sprintf("%s %s", arrow, g.Name)
+			if g.Config.Skip {
+				sb.WriteString(cursor + skipDimStyle.Render(categoryStyle.Render(catLabel)) + "  " + skipStyle.Render("[SKIP]") + "\n")
+			} else {
+				sb.WriteString(cursor + categoryStyle.Render(catLabel) + "  " + m.renderFields(g.Config, i == m.cursor) + "\n")
+			}
 		case rowChannel:
 			ch := m.groups[row.groupIdx].Channels[row.channelIdx]
 			override := ""
 			if ch.Config.Overridden {
 				override = overrideMarker
 			}
-			sb.WriteString(cursor + channelStyle.Render("#"+ch.Name) + "  " + m.renderFields(ch.Config, i == m.cursor) + override + "\n")
+			name := "#" + ch.Name
+			if ch.Config.Skip {
+				sb.WriteString(cursor + skipDimStyle.Render(channelStyle.Render(name)) + "  " + skipStyle.Render("[SKIP]") + override + "\n")
+			} else {
+				sb.WriteString(cursor + channelStyle.Render(name) + "  " + m.renderFields(ch.Config, i == m.cursor) + override + "\n")
+			}
 		}
 	}
 
 	sb.WriteString("\n")
 	sb.WriteString(buttonStyle.Render("[S]tart") + "  " + buttonStyle.Render("[B]ack") + "  " + buttonStyle.Render("[Q]uit"))
-	sb.WriteString("\n  ← → or Tab to switch fields · Enter to toggle/edit · ← → on category to collapse")
+	sb.WriteString("\n  ↑↓/j/k or PgUp/PgDn scroll · ← → or Tab switch fields · Enter toggle/edit · X skip channel · ← → on category collapse")
 	return sb.String()
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/blubskye/discord2stoat/internal/debug"
 	"github.com/blubskye/discord2stoat/internal/normalized"
 	"github.com/sentinelb51/revoltgo"
 )
@@ -57,6 +58,72 @@ type roleCreateResponse struct {
 	ID string `json:"id"`
 }
 
+// truncateRoleName truncates a role name to the Revolt maximum of 32 characters.
+func truncateRoleName(name string) string {
+	const max = 32
+	runes := []rune(name)
+	if len(runes) <= max {
+		return name
+	}
+	return string(runes[:max])
+}
+
+// PurgeRoles deletes all existing roles from the Stoat server.
+// This prevents duplicates when the tool is run multiple times.
+func (a *Adapter) PurgeRoles() error {
+	var server revoltgo.Server
+	if err := a.session.HTTP.Request(http.MethodGet, revoltgo.EndpointServer(a.serverID), nil, &server); err != nil {
+		return fmt.Errorf("stoat PurgeRoles fetch: %w", err)
+	}
+	debug.Printf("[stoat] purging %d existing roles...", len(server.Roles))
+	deleted := 0
+	for roleID := range server.Roles {
+		id := roleID
+		debug.Printf("[stoat] deleting existing role %s...", id)
+		if err := withRetry(func() error {
+			return a.session.ServerRoleDelete(a.serverID, id)
+		}); err != nil {
+			log.Printf("stoat PurgeRoles: delete role %s: %v", roleID, err)
+			continue
+		}
+		deleted++
+	}
+	debug.Printf("[stoat] purged %d roles", deleted)
+	return nil
+}
+
+// PurgeChannels deletes all existing channels from the Stoat server and clears
+// all categories from the server metadata.
+func (a *Adapter) PurgeChannels() error {
+	var server revoltgo.Server
+	if err := a.session.HTTP.Request(http.MethodGet, revoltgo.EndpointServer(a.serverID), nil, &server); err != nil {
+		return fmt.Errorf("stoat PurgeChannels fetch: %w", err)
+	}
+	debug.Printf("[stoat] purging %d existing channels...", len(server.Channels))
+	deleted := 0
+	for _, channelID := range server.Channels {
+		id := channelID
+		debug.Printf("[stoat] deleting existing channel %s...", id)
+		if err := withRetry(func() error {
+			return a.session.ChannelDelete(id)
+		}); err != nil {
+			log.Printf("stoat PurgeChannels: delete channel %s: %v", id, err)
+			continue
+		}
+		deleted++
+	}
+	// Clear categories from server metadata.
+	if _, err := withRetryVal(func() (*revoltgo.Server, error) {
+		return a.session.ServerEdit(a.serverID, revoltgo.ServerEditData{
+			Remove: []revoltgo.ServerEditDataRemove{revoltgo.ServerEditDataRemoveCategories},
+		})
+	}); err != nil {
+		log.Printf("stoat PurgeChannels: clear categories: %v", err)
+	}
+	debug.Printf("[stoat] purged %d channels", deleted)
+	return nil
+}
+
 // CreateRole creates a role on Stoat. It sets name and rank on creation,
 // then patches colour, hoist, and permissions separately.
 func (a *Adapter) CreateRole(r normalized.Role) (string, error) {
@@ -68,7 +135,7 @@ func (a *Adapter) CreateRole(r normalized.Role) (string, error) {
 	endpoint := revoltgo.EndpointServerRoles(a.serverID)
 	err := withRetry(func() error {
 		return a.session.HTTP.Request(http.MethodPost, endpoint, revoltgo.ServerRoleCreateData{
-			Name: r.Name,
+			Name: truncateRoleName(r.Name),
 			Rank: rank,
 		}, &resp)
 	})

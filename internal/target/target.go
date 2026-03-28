@@ -8,6 +8,12 @@ import "github.com/blubskye/discord2stoat/internal/normalized"
 // Target is implemented by each platform adapter (Stoat, Fluxer).
 // All methods use target-platform IDs in their return values.
 type Target interface {
+	// PurgeRoles deletes all non-system roles from the target server so that
+	// re-running the tool does not produce duplicates.
+	PurgeRoles() error
+	// PurgeChannels deletes all existing channels (and categories) from the
+	// target server so that re-running the tool does not produce duplicates.
+	PurgeChannels() error
 	// CreateRole creates a role and returns the new platform-specific ID.
 	CreateRole(r normalized.Role) (newID string, err error)
 	// SetRoleOrder sets the ordering of all roles after they have been created.

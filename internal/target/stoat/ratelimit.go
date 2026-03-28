@@ -6,9 +6,18 @@ package stoat
 import (
 	"encoding/json"
 	"log"
+	"math/rand/v2"
 	"strings"
 	"time"
 )
+
+// jitterMs adds 10–15% random jitter to a wait duration to avoid thundering-herd
+// re-collisions where the server's retry_after window keeps getting hit on the boundary.
+func jitterMs(ms int64) int64 {
+	// Add between 10% and 15% extra.
+	extra := ms/10 + int64(rand.N(ms/20+1))
+	return ms + extra
+}
 
 // withRetry executes fn, retrying on Revolt 429 responses by honouring retry_after (milliseconds).
 func withRetry(fn func() error) error {
@@ -21,8 +30,9 @@ func withRetry(fn func() error) error {
 		if ms <= 0 {
 			return err
 		}
-		log.Printf("stoat: rate limited, waiting %dms before retry", ms)
-		time.Sleep(time.Duration(ms) * time.Millisecond)
+		wait := jitterMs(ms)
+		log.Printf("stoat: rate limited, waiting %dms before retry", wait)
+		time.Sleep(time.Duration(wait) * time.Millisecond)
 	}
 }
 
@@ -37,8 +47,9 @@ func withRetryVal[T any](fn func() (T, error)) (T, error) {
 		if ms <= 0 {
 			return v, err
 		}
-		log.Printf("stoat: rate limited, waiting %dms before retry", ms)
-		time.Sleep(time.Duration(ms) * time.Millisecond)
+		wait := jitterMs(ms)
+		log.Printf("stoat: rate limited, waiting %dms before retry", wait)
+		time.Sleep(time.Duration(wait) * time.Millisecond)
 	}
 }
 

@@ -28,7 +28,8 @@ func sendEvent(ctx context.Context, ch chan<- ProgressEvent, e ProgressEvent) {
 // ChannelConfig holds the user's per-channel configuration from the TUI.
 type ChannelConfig struct {
 	Attribution  AttributionMode
-	MessageLimit int // 0 = all
+	MessageLimit int  // 0 = all
+	Skip         bool // true = don't create or post to this channel
 }
 
 // AttributionMode controls how message author is formatted.
@@ -108,6 +109,9 @@ func RunPhaseB(
 		cfg, ok := channelCfg[ch.ID]
 		if !ok {
 			cfg = ChannelConfig{Attribution: AttributionPrefix}
+		}
+		if cfg.Skip {
+			continue
 		}
 
 		wg.Add(1)
@@ -224,23 +228,44 @@ func runChannelWorker(
 			Attachments: attachments,
 		}
 
+		// Post to all targets concurrently so rate limits on one don't stall the other.
+		type sendResult struct {
+			name string
+			sent bool
+			err  error
+		}
+		sendCh := make(chan sendResult, len(targets))
 		for name, t := range targets {
-			targetChanID := channelMaps[name][ch.ID]
-			if targetChanID == "" {
-				continue
+			name, t := name, t
+			go func() {
+				targetChanID := channelMaps[name][ch.ID]
+				if targetChanID == "" {
+					sendCh <- sendResult{name: name}
+					return
+				}
+				if err := t.SendMessage(targetChanID, norm); err != nil {
+					sendCh <- sendResult{name: name, err: fmt.Errorf("[%s] SendMessage: %w", name, err)}
+					return
+				}
+				sendCh <- sendResult{name: name, sent: true}
+			}()
+		}
+		for range targets {
+			r := <-sendCh
+			if r.err != nil {
+				return r.err
 			}
-			if err := t.SendMessage(targetChanID, norm); err != nil {
-				return fmt.Errorf("[%s] SendMessage: %w", name, err)
+			if r.sent {
+				posted[r.name]++
+				debug.Printf("channel %s: posted message %d to %s", ch.ID, posted[r.name], r.name)
+				sendEvent(ctx, progressCh, ProgressEvent{
+					Kind:       EventChannelPost,
+					TargetName: r.name,
+					ChannelID:  ch.ID,
+					Count:      posted[r.name],
+					Total:      cfg.MessageLimit,
+				})
 			}
-			posted[name]++
-			debug.Printf("channel %s: posted message %d to %s", ch.ID, posted[name], name)
-			sendEvent(ctx, progressCh, ProgressEvent{
-				Kind:       EventChannelPost,
-				TargetName: name,
-				ChannelID:  ch.ID,
-				Count:      posted[name],
-				Total:      cfg.MessageLimit,
-			})
 		}
 	}
 

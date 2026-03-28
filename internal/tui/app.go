@@ -157,6 +157,8 @@ func buildProgressModel(ch chan pipeline.ProgressEvent, groups []CategoryGroup, 
 		categories:   categories,
 		targets:      targetNames,
 		structDone:   make(map[string]bool),
+		rolesCreated: make(map[string]int),
+		rolesTotal:   make(map[string]int),
 		progressCh:   ch,
 	}
 }

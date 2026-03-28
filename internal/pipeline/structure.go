@@ -40,6 +40,16 @@ func RunPhaseA(
 		ChannelIDs: make(IDMap),
 	}
 
+	// --- Step 0: Purge existing roles and channels to avoid duplicates on re-run ---
+	debug.Printf("[%s] purging existing roles...", targetName)
+	if err := t.PurgeRoles(); err != nil {
+		return nil, fmt.Errorf("phaseA[%s] PurgeRoles: %w", targetName, err)
+	}
+	debug.Printf("[%s] purging existing channels...", targetName)
+	if err := t.PurgeChannels(); err != nil {
+		return nil, fmt.Errorf("phaseA[%s] PurgeChannels: %w", targetName, err)
+	}
+
 	// --- Step 1: Create roles (sorted by position ascending) ---
 	// Work on a copy so we don't mutate the caller's slice.
 	roles = append([]*discordgo.Role(nil), roles...)
@@ -47,7 +57,7 @@ func RunPhaseA(
 		return roles[i].Position < roles[j].Position
 	})
 	debug.Printf("[%s] Phase A: creating %d roles", targetName, len(roles))
-	for _, r := range roles {
+	for ri, r := range roles {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -55,6 +65,7 @@ func RunPhaseA(
 		if r.Name == "@everyone" {
 			continue
 		}
+		debug.Printf("[%s] creating role %q (%d/%d)...", targetName, r.Name, ri+1, len(roles))
 		newID, err := t.CreateRole(normalized.Role{
 			DiscordID:   r.ID,
 			Name:        r.Name,
@@ -86,7 +97,7 @@ func RunPhaseA(
 		}
 	}
 	if err := t.SetRoleOrder(roleOrders); err != nil {
-		return nil, fmt.Errorf("phaseA[%s] SetRoleOrder: %w", targetName, err)
+		log.Printf("phaseA[%s] SetRoleOrder: %v (non-fatal, continuing)", targetName, err)
 	}
 
 	// Sort channels by position once; used for all steps below.

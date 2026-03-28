@@ -51,15 +51,53 @@ func Run(ctx context.Context, cfg RunConfig) error {
 		emojis = nil
 	}
 
-	// Phase A: run for each target sequentially (order doesn't matter, but simpler).
-	channelMaps := make(map[string]IDMap)
-	for name, t := range cfg.Targets {
-		result, err := RunPhaseA(ctx, t, name, roles, channels, emojis, cfg.ProgressCh)
-		if err != nil {
-			return fmt.Errorf("phase A [%s]: %w", name, err)
+	// Build skip set from user config (text/voice channels only; categories are always kept).
+	skipChannelIDs := make(map[string]bool)
+	for id, c := range cfg.ChannelCfgs {
+		if c.Skip {
+			skipChannelIDs[id] = true
 		}
-		channelMaps[name] = result.ChannelIDs
-		log.Printf("Phase A complete for %s", name)
+	}
+	// Filter out skipped channels for Phase A (keep categories so layout is preserved).
+	phaseAChannels := make([]*discordgo.Channel, 0, len(channels))
+	for _, ch := range channels {
+		if ch.Type != discordgo.ChannelTypeGuildCategory && skipChannelIDs[ch.ID] {
+			continue
+		}
+		phaseAChannels = append(phaseAChannels, ch)
+	}
+
+	// Phase A: run for each target concurrently.
+	type phaseAOut struct {
+		name string
+		ids  IDMap
+		err  error
+	}
+	paCh := make(chan phaseAOut, len(cfg.Targets))
+	for name, t := range cfg.Targets {
+		name, t := name, t
+		go func() {
+			result, err := RunPhaseA(ctx, t, name, roles, phaseAChannels, emojis, cfg.ProgressCh)
+			if err != nil {
+				paCh <- phaseAOut{name: name, err: err}
+				return
+			}
+			paCh <- phaseAOut{name: name, ids: result.ChannelIDs}
+		}()
+	}
+	channelMaps := make(map[string]IDMap)
+	var phaseAErr error
+	for range cfg.Targets {
+		out := <-paCh
+		if out.err != nil && phaseAErr == nil {
+			phaseAErr = fmt.Errorf("phase A [%s]: %w", out.name, out.err)
+		} else if out.err == nil {
+			channelMaps[out.name] = out.ids
+			log.Printf("Phase A complete for %s", out.name)
+		}
+	}
+	if phaseAErr != nil {
+		return phaseAErr
 	}
 
 	// Collect text channels for Phase B.
