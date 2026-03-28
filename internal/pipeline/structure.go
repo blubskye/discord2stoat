@@ -67,11 +67,11 @@ func RunPhaseA(
 		}
 		result.RoleIDs[r.ID] = newID
 		debug.Printf("[%s] role %q created as %s", targetName, r.Name, newID)
-		progressCh <- ProgressEvent{
+		sendEvent(ctx, progressCh, ProgressEvent{
 			Kind:       EventRoleCreated,
 			TargetName: targetName,
 			RolesTotal: len(roles) - 1, // exclude @everyone which is always skipped
-		}
+		})
 	}
 
 	// --- Step 2: Create role order ---
@@ -208,6 +208,6 @@ func RunPhaseA(
 		}
 	}
 
-	progressCh <- ProgressEvent{Kind: EventStructureDone, TargetName: targetName}
+	sendEvent(ctx, progressCh, ProgressEvent{Kind: EventStructureDone, TargetName: targetName})
 	return result, nil
 }

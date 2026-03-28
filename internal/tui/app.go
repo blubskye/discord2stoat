@@ -5,7 +5,6 @@ package tui
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/bwmarrin/discordgo"
@@ -160,14 +159,6 @@ func buildProgressModel(ch chan pipeline.ProgressEvent, groups []CategoryGroup, 
 		structDone:   make(map[string]bool),
 		progressCh:   ch,
 	}
-}
-
-// GracefulStop cancels the pipeline context.
-func (m *AppModel) GracefulStop() {
-	if m.cancelFn != nil {
-		m.cancelFn()
-	}
-	fmt.Println()
 }
 
 func (m *AppModel) SetPipelineRunner(fn PipelineRunner) { m.pipelineRunner = fn }

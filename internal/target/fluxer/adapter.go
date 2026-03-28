@@ -6,6 +6,7 @@ package fluxer
 import (
 	"bytes"
 	"fmt"
+	"log"
 
 	"github.com/blubskye/discord2stoat/internal/normalized"
 	"github.com/disgoorg/omit"
@@ -13,6 +14,23 @@ import (
 	"github.com/fluxergo/fluxergo/fluxer"
 	"github.com/fluxergo/fluxergo/rest"
 )
+
+// FetchServerName returns the display name of the Fluxer guild.
+// Falls back to serverID on error.
+func FetchServerName(token, serverID string) string {
+	id, err := snowflake.Parse(serverID)
+	if err != nil {
+		log.Printf("fluxer: could not parse guild ID %s: %v", serverID, err)
+		return serverID
+	}
+	guilds := rest.NewGuilds(rest.NewClient("Bot " + token))
+	guild, err := guilds.GetGuild(id, false)
+	if err != nil {
+		log.Printf("fluxer: could not fetch guild name for %s: %v", serverID, err)
+		return serverID
+	}
+	return guild.Name
+}
 
 // Adapter implements target.Target for the Fluxer platform.
 type Adapter struct {

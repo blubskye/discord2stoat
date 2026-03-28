@@ -81,7 +81,7 @@ func main() {
 		targets["stoat"] = a
 		confirmEntries = append(confirmEntries, tui.ConfirmEntry{
 			Label:    "Target  (Stoat)",
-			Name:     cfg.Stoat.ServerID,
+			Name:     targetstoat.FetchServerName(cfg.Stoat.Token, cfg.Stoat.ServerID),
 			ServerID: cfg.Stoat.ServerID,
 		})
 	}
@@ -95,7 +95,7 @@ func main() {
 		targets["fluxer"] = a
 		confirmEntries = append(confirmEntries, tui.ConfirmEntry{
 			Label:    "Target  (Fluxer)",
-			Name:     cfg.Fluxer.ServerID,
+			Name:     targetfluxer.FetchServerName(cfg.Fluxer.Token, cfg.Fluxer.ServerID),
 			ServerID: cfg.Fluxer.ServerID,
 		})
 	}

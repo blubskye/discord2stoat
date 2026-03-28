@@ -14,6 +14,18 @@ import (
 	"github.com/sentinelb51/revoltgo"
 )
 
+// FetchServerName returns the display name of the Stoat server.
+// Falls back to serverID on error.
+func FetchServerName(token, serverID string) string {
+	sess := revoltgo.New(token)
+	server, err := sess.Server(serverID)
+	if err != nil {
+		log.Printf("stoat: could not fetch server name for %s: %v", serverID, err)
+		return serverID
+	}
+	return server.Name
+}
+
 // Adapter implements target.Target for the Stoat (Revolt) platform.
 type Adapter struct {
 	session  *revoltgo.Session

@@ -3,8 +3,6 @@
 
 package normalized
 
-import "time"
-
 // ChannelType is the normalized channel type.
 type ChannelType int
 
@@ -61,7 +59,6 @@ type RoleOrder struct {
 type Message struct {
 	Content     string
 	AuthorName  string       // populated when attribution mode is Prefix
-	Timestamp   time.Time
 	Attachments []Attachment // downloaded from Discord CDN once; re-uploaded by each adapter
 }
 

@@ -17,6 +17,14 @@ import (
 	"github.com/blubskye/discord2stoat/internal/target"
 )
 
+// sendEvent sends e on ch, or returns without blocking if ctx is done.
+func sendEvent(ctx context.Context, ch chan<- ProgressEvent, e ProgressEvent) {
+	select {
+	case ch <- e:
+	case <-ctx.Done():
+	}
+}
+
 // ChannelConfig holds the user's per-channel configuration from the TUI.
 type ChannelConfig struct {
 	Attribution  AttributionMode
@@ -107,21 +115,21 @@ func RunPhaseB(
 			defer wg.Done()
 			if err := runChannelWorker(ctx, discordClient, targets, channelMaps, ch, cfg, progressCh, pauser); err != nil {
 				log.Printf("channel %s (%s): %v", ch.Name, ch.ID, err)
-				progressCh <- ProgressEvent{
+				sendEvent(ctx, progressCh, ProgressEvent{
 					Kind:      EventChannelError,
 					ChannelID: ch.ID,
 					Err:       err,
-				}
+				})
 				// EventChannelError is terminal; send EventChannelDone so the TUI can
 				// mark the channel complete regardless of the error path.
-				progressCh <- ProgressEvent{Kind: EventChannelDone, ChannelID: ch.ID}
+				sendEvent(ctx, progressCh, ProgressEvent{Kind: EventChannelDone, ChannelID: ch.ID})
 			}
 		}()
 	}
 
 	wg.Wait()
 	for name := range targets {
-		progressCh <- ProgressEvent{Kind: EventPhaseBDone, TargetName: name}
+		sendEvent(ctx, progressCh, ProgressEvent{Kind: EventPhaseBDone, TargetName: name})
 	}
 }
 
@@ -163,12 +171,12 @@ func runChannelWorker(
 
 		fetched++
 		debug.Printf("channel %s: fetched message %d (total so far: %d)", ch.ID, fetched, fetched)
-		progressCh <- ProgressEvent{
+		sendEvent(ctx, progressCh, ProgressEvent{
 			Kind:      EventChannelFetch,
 			ChannelID: ch.ID,
 			Count:     fetched,
 			Total:     cfg.MessageLimit,
-		}
+		})
 
 		authorName := ""
 		if cfg.Attribution == AttributionPrefix && msg.Author != nil {
@@ -213,7 +221,6 @@ func runChannelWorker(
 		norm := normalized.Message{
 			Content:     msg.Content,
 			AuthorName:  authorName,
-			Timestamp:   msg.Timestamp,
 			Attachments: attachments,
 		}
 
@@ -227,13 +234,13 @@ func runChannelWorker(
 			}
 			posted[name]++
 			debug.Printf("channel %s: posted message %d to %s", ch.ID, posted[name], name)
-			progressCh <- ProgressEvent{
+			sendEvent(ctx, progressCh, ProgressEvent{
 				Kind:       EventChannelPost,
 				TargetName: name,
 				ChannelID:  ch.ID,
 				Count:      posted[name],
 				Total:      cfg.MessageLimit,
-			}
+			})
 		}
 	}
 
@@ -241,6 +248,6 @@ func runChannelWorker(
 		return fmt.Errorf("fetch: %w", err)
 	}
 
-	progressCh <- ProgressEvent{Kind: EventChannelDone, ChannelID: ch.ID}
+	sendEvent(ctx, progressCh, ProgressEvent{Kind: EventChannelDone, ChannelID: ch.ID})
 	return nil
 }
