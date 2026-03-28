@@ -1,15 +1,21 @@
 # discord2stoat configuration
-# Copy this file to config.toml and fill in your tokens.
+# Copy this file to config.toml and fill in your credentials.
+# At least one target section ([stoat] or [fluxer]) must be present.
 
+# ── Discord source ────────────────────────────────────────────────────────────
+# Prefix the token with "Bot " for bot accounts (standard Discord bot tokens).
 discord_token     = "Bot YOUR_DISCORD_BOT_TOKEN"
-discord_server_id = "YOUR_DISCORD_SERVER_ID"
+discord_server_id = "YOUR_DISCORD_GUILD_ID"
 
-# Enable Stoat target (remove or leave token empty to skip)
+# ── Stoat (Revolt fork) target ────────────────────────────────────────────────
+# Remove this entire section (or leave token empty) to skip Stoat.
 [stoat]
 token     = "YOUR_STOAT_BOT_TOKEN"
 server_id = "YOUR_STOAT_SERVER_ID"
 
-# Enable Fluxer target (remove or leave token empty to skip)
+# ── Fluxer (Discord fork) target ─────────────────────────────────────────────
+# Remove this entire section (or leave token empty) to skip Fluxer.
+# Fluxer uses Discord-style bot tokens — prefix with "Bot ".
 [fluxer]
-token     = "YOUR_FLUXER_BOT_TOKEN"
-server_id = "YOUR_FLUXER_SERVER_ID"
+token     = "Bot YOUR_FLUXER_BOT_TOKEN"
+server_id = "YOUR_FLUXER_GUILD_ID"
