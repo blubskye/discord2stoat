@@ -1,3 +1,6 @@
+// Copyright (C) 2026 blubskye <https://github.com/blubskye/discord2stoat>
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 package target
 
 import "github.com/blubskye/discord2stoat/internal/normalized"
