@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 
 	"github.com/bwmarrin/discordgo"
@@ -35,6 +36,8 @@ func RunPhaseA(
 	}
 
 	// --- Step 1: Create roles (sorted by position ascending) ---
+	// Work on a copy so we don't mutate the caller's slice.
+	roles = append([]*discordgo.Role(nil), roles...)
 	sort.Slice(roles, func(i, j int) bool {
 		return roles[i].Position < roles[j].Position
 	})
@@ -61,7 +64,7 @@ func RunPhaseA(
 		progressCh <- ProgressEvent{
 			Kind:       EventRoleCreated,
 			TargetName: targetName,
-			RolesTotal: len(roles),
+			RolesTotal: len(roles) - 1, // exclude @everyone which is always skipped
 		}
 	}
 
@@ -79,8 +82,15 @@ func RunPhaseA(
 		return nil, fmt.Errorf("phaseA[%s] SetRoleOrder: %w", targetName, err)
 	}
 
-	// --- Step 3: Create categories first ---
-	for _, ch := range channels {
+	// Sort channels by position once; used for all steps below.
+	sorted := make([]*discordgo.Channel, len(channels))
+	copy(sorted, channels)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Position < sorted[j].Position
+	})
+
+	// --- Step 3: Create categories first (sorted by position) ---
+	for _, ch := range sorted {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -100,12 +110,6 @@ func RunPhaseA(
 	}
 
 	// --- Step 4: Create text and voice channels ---
-	// Sort by position to preserve order.
-	sorted := make([]*discordgo.Channel, len(channels))
-	copy(sorted, channels)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].Position < sorted[j].Position
-	})
 	for _, ch := range sorted {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -178,6 +182,8 @@ func RunPhaseA(
 			}
 			newRoleID := result.RoleIDs[ow.ID]
 			if newRoleID == "" {
+				// @everyone and unmapped roles are skipped; their overwrites cannot be transferred.
+				log.Printf("phaseA[%s] skipping overwrite for unmapped role %s on channel %q", targetName, ow.ID, ch.Name)
 				continue
 			}
 			overwrites = append(overwrites, normalized.Overwrite{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/blubskye/discord2stoat/internal/target"
@@ -61,12 +60,7 @@ func Run(ctx context.Context, cfg RunConfig) error {
 	}
 
 	// Phase B: all channels concurrently across all targets.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		RunPhaseB(ctx, cfg.Discord, cfg.Targets, channelMaps, textChannels, cfg.ChannelCfgs, cfg.ProgressCh, cfg.Pauser)
-	}()
-	wg.Wait()
+	// RunPhaseB blocks until all per-channel goroutines complete.
+	RunPhaseB(ctx, cfg.Discord, cfg.Targets, channelMaps, textChannels, cfg.ChannelCfgs, cfg.ProgressCh, cfg.Pauser)
 	return nil
 }

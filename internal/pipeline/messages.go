@@ -108,6 +108,9 @@ func RunPhaseB(
 					ChannelID: ch.ID,
 					Err:       err,
 				}
+				// EventChannelError is terminal; send EventChannelDone so the TUI can
+				// mark the channel complete regardless of the error path.
+				progressCh <- ProgressEvent{Kind: EventChannelDone, ChannelID: ch.ID}
 			}
 		}()
 	}
@@ -131,13 +134,15 @@ func runChannelWorker(
 	pauser *Pauser,
 ) error {
 	buf := make(chan *discordgo.Message, 500)
-	done := ctx.Done()
+	// workerCtx lets the post loop cancel the fetch goroutine on early exit.
+	workerCtx, workerCancel := context.WithCancel(ctx)
+	defer workerCancel()
 
 	// Fetch goroutine: reads from Discord and pushes to buf.
 	fetchErr := make(chan error, 1)
 	go func() {
 		defer close(buf)
-		fetchErr <- discordClient.FetchMessages(ch.ID, cfg.MessageLimit, buf, done)
+		fetchErr <- discordClient.FetchMessages(ch.ID, cfg.MessageLimit, buf, workerCtx.Done())
 	}()
 
 	// Post goroutine: reads from buf and sends to all targets.
@@ -166,15 +171,26 @@ func runChannelWorker(
 		}
 
 		// Download attachments (images, videos, files) from Discord CDN.
+		// Attachment bytes are read-only shared across all targets; adapters must not mutate Data.
 		var attachments []normalized.Attachment
 		for _, a := range msg.Attachments {
 			if a.Size > 100*1024*1024 { // skip files > 100 MB
 				log.Printf("skipping large attachment %s (%d bytes)", a.Filename, a.Size)
 				continue
 			}
-			resp, err := http.Get(a.URL)
+			req, err := http.NewRequestWithContext(workerCtx, http.MethodGet, a.URL, nil)
+			if err != nil {
+				log.Printf("build request for attachment %s: %v", a.Filename, err)
+				continue
+			}
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				log.Printf("download attachment %s: %v", a.Filename, err)
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				log.Printf("download attachment %s: HTTP %d", a.Filename, resp.StatusCode)
 				continue
 			}
 			data, err := io.ReadAll(resp.Body)
