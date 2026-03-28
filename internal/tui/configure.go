@@ -27,11 +27,12 @@ type ChanConfig struct {
 
 // CategoryGroup holds a category and its channels for display.
 type CategoryGroup struct {
-	DiscordID string
-	Name      string
-	Collapsed bool
-	Config    ChanConfig
-	Channels  []ChannelRow
+	DiscordID  string
+	Name       string
+	Collapsed  bool
+	Config     ChanConfig
+	Overridden bool // true if this category's config was manually set
+	Channels   []ChannelRow
 }
 
 // ChannelRow is one text or voice channel in the list.
@@ -235,9 +236,7 @@ func (m *ConfigureModel) propagateToChildren(row configRow) {
 	parentCfg := m.getConfig(row)
 	if row.kind == rowSelectAll {
 		for gi := range m.groups {
-			// Only propagate to groups where there are no overridden channels
-			// (nil-safe: skip check if group has no channels).
-			if len(m.groups[gi].Channels) == 0 || !m.groups[gi].Channels[0].Config.Overridden {
+			if !m.groups[gi].Overridden {
 				m.groups[gi].Config = parentCfg
 				for ci := range m.groups[gi].Channels {
 					if !m.groups[gi].Channels[ci].Config.Overridden {
@@ -271,6 +270,9 @@ func (m *ConfigureModel) setConfig(row configRow, cfg ChanConfig, markOverride b
 	case rowSelectAll:
 		m.selectAll = cfg
 	case rowCategory:
+		if markOverride {
+			m.groups[row.groupIdx].Overridden = true
+		}
 		m.groups[row.groupIdx].Config = cfg
 	default:
 		if markOverride {

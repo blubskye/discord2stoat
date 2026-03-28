@@ -11,3 +11,6 @@ type msgStartClone struct{}
 
 // msgBack is sent when the user presses Back on Screen 2.
 type msgBack struct{}
+
+// msgPipelineDone is sent when the pipeline progress channel is closed.
+type msgPipelineDone struct{}

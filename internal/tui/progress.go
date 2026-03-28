@@ -76,9 +76,14 @@ func NewProgressModel(
 }
 
 // WaitForEvent is a bubbletea Cmd that reads the next ProgressEvent.
+// When the channel is closed it returns msgPipelineDone to stop the event loop.
 func (m ProgressModel) WaitForEvent() tea.Cmd {
 	return func() tea.Msg {
-		return <-m.progressCh
+		e, ok := <-m.progressCh
+		if !ok {
+			return msgPipelineDone{}
+		}
+		return e
 	}
 }
 
@@ -91,6 +96,10 @@ func (m ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pipeline.ProgressEvent:
 		m.applyEvent(msg)
 		return m, m.WaitForEvent()
+
+	case msgPipelineDone:
+		// Pipeline finished; stop listening for events.
+		return m, nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
