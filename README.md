@@ -148,10 +148,7 @@ i won't let a single thing get left behind. not one role. not one message. *not 
 > *"Let me prepare everything for you~"* 💗
 
 - 🐹 **Go** 1.26 or higher
-- 🐿️ **revoltgo** (local copy) — required for Stoat support
-- ⚡ **fluxergo** (local copy) — required for Fluxer support
-
-> 💡 The `go.mod` uses local `replace` directives for `revoltgo` and `fluxergo`. Place the library directories alongside the project root before building.
+- 🐿️ **Go** will pull [revoltgo](https://github.com/sentinelb51/revoltgo) and [fluxergo](https://github.com/fluxergo/fluxergo) automatically
 
 ### 🔧 Installing Go 1.26
 
@@ -214,9 +211,6 @@ go version  # Should show go1.26.x
 # Clone the repository~ ♥
 git clone https://github.com/blubskye/discord2stoat.git
 cd discord2stoat
-
-# Make sure revoltgo and fluxergo are in place
-ls ../revoltgo ../fluxergo
 
 # Build with version info embedded~
 go build \

@@ -24,6 +24,8 @@ github.com/disgoorg/snowflake/v2 v2.0.3 h1:3B+PpFjr7j4ad7oeJu4RlQ+nYOTadsKapJIzg
 github.com/disgoorg/snowflake/v2 v2.0.3/go.mod h1:W6r7NUA7DwfZLwr00km6G4UnZ0zcoLBRufhkFWgAc4c=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f h1:Y/CXytFA4m6baUTXGLOoWe4PQhGxaX0KpnayAqC48p4=
 github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f/go.mod h1:vw97MGsxSvLiUE2X8qFplwetxpGLQrlU1Q9AUEIzCaM=
+github.com/fluxergo/fluxergo v0.0.0-20260316215506-9338f5000983 h1:hs8o+y+d/gPLCH4l9N5MU5dA+SgQyMoCjQg1+LUgBPQ=
+github.com/fluxergo/fluxergo v0.0.0-20260316215506-9338f5000983/go.mod h1:3zQyjJMlAiPcbnchLHYH+TlQvYn/S2xY6MaVV7Sv/5U=
 github.com/goccy/go-json v0.10.6 h1:p8HrPJzOakx/mn/bQtjgNjdTcN+/S6FcG2CTtQOrHVU=
 github.com/goccy/go-json v0.10.6/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
@@ -59,6 +61,8 @@ github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/sasha-s/go-csync v0.0.0-20240107134140-fcbab37b09ad h1:qIQkSlF5vAUHxEmTbaqt1hkJ/t6skqEGYiMag343ucI=
 github.com/sasha-s/go-csync v0.0.0-20240107134140-fcbab37b09ad/go.mod h1:/pA7k3zsXKdjjAiUhB5CjuKib9KJGCaLvZwtxGC8U0s=
+github.com/sentinelb51/revoltgo v0.0.0-20260325033615-9efbbbc77577 h1:x+1+lWiTxfpiyTLLlZP3Dug6LvQXphUe5RwCUi1M3j4=
+github.com/sentinelb51/revoltgo v0.0.0-20260325033615-9efbbbc77577/go.mod h1:wIldmnu97cKNG6DIMrKwRLwiVOx1Ybr2qrRLScJHPJg=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tinylib/msgp v1.6.3 h1:bCSxiTz386UTgyT1i0MSCvdbWjVW+8sG3PjkGsZQt4s=
