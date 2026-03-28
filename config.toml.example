@@ -17,5 +17,5 @@ server_id = "YOUR_STOAT_SERVER_ID"
 # Remove this entire section (or leave token empty) to skip Fluxer.
 # Fluxer uses Discord-style bot tokens — prefix with "Bot ".
 [fluxer]
-token     = "Bot YOUR_FLUXER_BOT_TOKEN"
+token     = "YOUR_FLUXER_BOT_TOKEN"
 server_id = "YOUR_FLUXER_GUILD_ID"

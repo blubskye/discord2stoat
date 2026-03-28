@@ -23,7 +23,7 @@ func FetchServerName(token, serverID string) string {
 		log.Printf("fluxer: could not parse guild ID %s: %v", serverID, err)
 		return serverID
 	}
-	guilds := rest.NewGuilds(rest.NewClient("Bot " + token))
+	guilds := rest.NewGuilds(rest.NewClient(token))
 	guild, err := guilds.GetGuild(id, false)
 	if err != nil {
 		log.Printf("fluxer: could not fetch guild name for %s: %v", serverID, err)
@@ -46,7 +46,7 @@ func New(token, guildID string) (*Adapter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fluxer: invalid guild ID %q: %w", guildID, err)
 	}
-	client := rest.NewClient("Bot " + token)
+	client := rest.NewClient(token)
 	return &Adapter{
 		guilds:   rest.NewGuilds(client),
 		channels: rest.NewChannels(client, fluxer.AllowedMentions{}),
