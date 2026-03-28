@@ -16,10 +16,11 @@ import (
 
 // FetchServerName returns the display name of the Stoat server.
 // Falls back to serverID on error.
+// Uses raw HTTP instead of sess.Server() to avoid the uninitialized state map panic.
 func FetchServerName(token, serverID string) string {
 	sess := revoltgo.New(token)
-	server, err := sess.Server(serverID)
-	if err != nil {
+	var server revoltgo.Server
+	if err := sess.HTTP.Request(http.MethodGet, revoltgo.EndpointServer(serverID), nil, &server); err != nil {
 		log.Printf("stoat: could not fetch server name for %s: %v", serverID, err)
 		return serverID
 	}
