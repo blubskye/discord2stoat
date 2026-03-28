@@ -1,4 +1,15 @@
+# build output
 /discord2stoat
+
+# logs & secrets
 discord2stoat.log
 config.toml
 .auth_token
+
+# local API library copies (obtained separately)
+/revoltgo/
+/fluxergo/
+
+# tooling
+.claude/
+docs/
