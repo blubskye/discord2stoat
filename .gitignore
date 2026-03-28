@@ -4,6 +4,7 @@
 # logs & secrets
 discord2stoat.log
 config.toml
+chat.txt
 .auth_token
 
 # local API library copies (obtained separately)
