@@ -187,9 +187,14 @@ func RunPhaseA(
 	}
 
 	// --- Step 6: Set channel permission overwrites ---
+	// Categories are skipped: Stoat doesn't support category-level overwrites, and
+	// on Fluxer, child channels already carry their own overwrite copies from Discord.
 	for _, ch := range channels {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		if ch.Type == discordgo.ChannelTypeGuildCategory {
+			continue
 		}
 		newChanID, ok := result.ChannelIDs[ch.ID]
 		if !ok {

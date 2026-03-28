@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/blubskye/discord2stoat/internal/debug"
@@ -247,27 +248,94 @@ func (a *Adapter) CreateChannel(c normalized.Channel) (string, error) {
 }
 
 // SetChannelOrder sets the position and parent of all channels via a batch call.
+//
+// Discord's channel positions are per-category (0-indexed within each category),
+// not globally sequential. Fluxer requires globally unique positions, so we
+// rebuild them here: categories in position order, each immediately followed by
+// their children in position order, then any uncategorised channels at the end.
 func (a *Adapter) SetChannelOrder(updates []normalized.ChannelOrder) error {
-	batch := make([]fluxer.GuildChannelPositionUpdate, 0, len(updates))
+	// Group children by their parent ID.
+	childrenByParent := make(map[string][]normalized.ChannelOrder)
 	for _, u := range updates {
+		if u.ParentID != "" {
+			childrenByParent[u.ParentID] = append(childrenByParent[u.ParentID], u)
+		}
+	}
+
+	// Separate top-level entries: those with children are categories;
+	// those without are uncategorised channels.
+	var categories []normalized.ChannelOrder
+	var uncategorised []normalized.ChannelOrder
+	for _, u := range updates {
+		if u.ParentID != "" {
+			continue // child — handled via parent loop below
+		}
+		if _, hasChildren := childrenByParent[u.ChannelID]; hasChildren {
+			categories = append(categories, u)
+		} else {
+			uncategorised = append(uncategorised, u)
+		}
+	}
+
+	// Sort categories and uncategorised channels by their Discord position.
+	sort.Slice(categories, func(i, j int) bool { return categories[i].Position < categories[j].Position })
+	sort.Slice(uncategorised, func(i, j int) bool { return uncategorised[i].Position < uncategorised[j].Position })
+	// Sort children within each category by their Discord position.
+	for k := range childrenByParent {
+		sort.Slice(childrenByParent[k], func(i, j int) bool {
+			return childrenByParent[k][i].Position < childrenByParent[k][j].Position
+		})
+	}
+
+	// Build the batch with globally sequential positions:
+	// category → its children → next category → its children → … → uncategorised.
+	batch := make([]fluxer.GuildChannelPositionUpdate, 0, len(updates))
+	globalPos := 0
+
+	for _, cat := range categories {
+		catID, err := snowflake.Parse(cat.ChannelID)
+		if err != nil {
+			return fmt.Errorf("fluxer SetChannelOrder: invalid category ID %q: %w", cat.ChannelID, err)
+		}
+		pos := globalPos
+		batch = append(batch, fluxer.GuildChannelPositionUpdate{
+			ID:       catID,
+			Position: omit.NewPtr(pos),
+		})
+		globalPos++
+
+		for _, child := range childrenByParent[cat.ChannelID] {
+			childID, err := snowflake.Parse(child.ChannelID)
+			if err != nil {
+				return fmt.Errorf("fluxer SetChannelOrder: invalid channel ID %q: %w", child.ChannelID, err)
+			}
+			pid, err := snowflake.Parse(child.ParentID)
+			if err != nil {
+				return fmt.Errorf("fluxer SetChannelOrder: invalid parent ID %q: %w", child.ParentID, err)
+			}
+			pos := globalPos
+			batch = append(batch, fluxer.GuildChannelPositionUpdate{
+				ID:       childID,
+				Position: omit.NewPtr(pos),
+				ParentID: &pid,
+			})
+			globalPos++
+		}
+	}
+
+	for _, u := range uncategorised {
 		id, err := snowflake.Parse(u.ChannelID)
 		if err != nil {
 			return fmt.Errorf("fluxer SetChannelOrder: invalid channel ID %q: %w", u.ChannelID, err)
 		}
-		pos := u.Position
-		upd := fluxer.GuildChannelPositionUpdate{
+		pos := globalPos
+		batch = append(batch, fluxer.GuildChannelPositionUpdate{
 			ID:       id,
 			Position: omit.NewPtr(pos),
-		}
-		if u.ParentID != "" {
-			pid, err := snowflake.Parse(u.ParentID)
-			if err != nil {
-				return fmt.Errorf("fluxer SetChannelOrder: invalid parent ID %q: %w", u.ParentID, err)
-			}
-			upd.ParentID = &pid
-		}
-		batch = append(batch, upd)
+		})
+		globalPos++
 	}
+
 	return a.guilds.UpdateChannelPositions(a.guildID, batch)
 }
 

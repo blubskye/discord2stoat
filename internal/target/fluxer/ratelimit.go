@@ -7,11 +7,15 @@ import (
 	"encoding/json"
 	"log"
 	"regexp"
+	"strings"
 	"time"
 )
 
-// maxRetries is the number of times to retry a Fluxer API call on 429.
+// maxRetries is the number of times to retry a Fluxer API call on retriable errors.
 const maxRetries = 8
+
+// serverErrBackoff is the fixed wait before retrying on a 5xx response.
+const serverErrBackoff = 5 * time.Second
 
 // bodyRe extracts the JSON body from fluxergo error strings of the form:
 //
@@ -24,13 +28,27 @@ type fluxerRateLimitBody struct {
 	RetryAfter float64 `json:"retry_after"`
 }
 
-// retryAfterFromErr parses a retry_after duration from a fluxergo 429 error.
-// Returns 0 if the error is not a 429 or parsing fails.
-func retryAfterFromErr(err error) time.Duration {
+// retryWaitFromErr returns the duration to wait before retrying, or 0 if the
+// error is not retriable.
+//
+//   - 429 RATE_LIMITED → wait retry_after seconds from the response body
+//   - 5xx server errors (502, 503, 504, …) → wait serverErrBackoff
+//   - anything else → 0 (not retriable)
+func retryWaitFromErr(err error) time.Duration {
 	if err == nil {
 		return 0
 	}
-	m := bodyRe.FindStringSubmatch(err.Error())
+	s := err.Error()
+
+	// 5xx transient server errors.
+	for _, code := range []string{"500", "502", "503", "504"} {
+		if strings.Contains(s, "Status: "+code) {
+			return serverErrBackoff
+		}
+	}
+
+	// 429 rate limit — parse retry_after from JSON body.
+	m := bodyRe.FindStringSubmatch(s)
 	if len(m) < 2 {
 		return 0
 	}
@@ -44,24 +62,22 @@ func retryAfterFromErr(err error) time.Duration {
 	return time.Duration(body.RetryAfter*1000) * time.Millisecond
 }
 
-// withRetry calls fn, retrying on 429 up to maxRetries times.
-// On each 429 it sleeps the retry_after duration from the response body.
+// withRetry calls fn, retrying on retriable errors up to maxRetries times.
 func withRetry(label string, fn func() error) error {
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		err := fn()
 		if err == nil {
 			return nil
 		}
-		wait := retryAfterFromErr(err)
+		wait := retryWaitFromErr(err)
 		if wait == 0 {
-			// Not a rate-limit error; don't retry.
 			return err
 		}
 		if attempt == maxRetries {
 			return err
 		}
-		log.Printf("fluxer: %s: 429 rate limited, retrying in %s (attempt %d/%d)",
-			label, wait.Round(time.Millisecond), attempt+1, maxRetries)
+		log.Printf("fluxer: %s: retrying in %s (attempt %d/%d): %v",
+			label, wait.Round(time.Millisecond), attempt+1, maxRetries, err)
 		time.Sleep(wait)
 	}
 	return nil // unreachable
@@ -75,15 +91,15 @@ func withRetryVal[T any](label string, fn func() (T, error)) (T, error) {
 		if err == nil {
 			return v, nil
 		}
-		wait := retryAfterFromErr(err)
+		wait := retryWaitFromErr(err)
 		if wait == 0 {
 			return zero, err
 		}
 		if attempt == maxRetries {
 			return zero, err
 		}
-		log.Printf("fluxer: %s: 429 rate limited, retrying in %s (attempt %d/%d)",
-			label, wait.Round(time.Millisecond), attempt+1, maxRetries)
+		log.Printf("fluxer: %s: retrying in %s (attempt %d/%d): %v",
+			label, wait.Round(time.Millisecond), attempt+1, maxRetries, err)
 		time.Sleep(wait)
 	}
 	return zero, nil // unreachable

@@ -72,7 +72,9 @@ func truncateRoleName(name string) string {
 // This prevents duplicates when the tool is run multiple times.
 func (a *Adapter) PurgeRoles() error {
 	var server revoltgo.Server
-	if err := a.session.HTTP.Request(http.MethodGet, revoltgo.EndpointServer(a.serverID), nil, &server); err != nil {
+	if err := withRetry(func() error {
+		return a.session.HTTP.Request(http.MethodGet, revoltgo.EndpointServer(a.serverID), nil, &server)
+	}); err != nil {
 		return fmt.Errorf("stoat PurgeRoles fetch: %w", err)
 	}
 	debug.Printf("[stoat] purging %d existing roles...", len(server.Roles))
@@ -96,7 +98,9 @@ func (a *Adapter) PurgeRoles() error {
 // all categories from the server metadata.
 func (a *Adapter) PurgeChannels() error {
 	var server revoltgo.Server
-	if err := a.session.HTTP.Request(http.MethodGet, revoltgo.EndpointServer(a.serverID), nil, &server); err != nil {
+	if err := withRetry(func() error {
+		return a.session.HTTP.Request(http.MethodGet, revoltgo.EndpointServer(a.serverID), nil, &server)
+	}); err != nil {
 		return fmt.Errorf("stoat PurgeChannels fetch: %w", err)
 	}
 	debug.Printf("[stoat] purging %d existing channels...", len(server.Channels))
