@@ -22,4 +22,7 @@ type Target interface {
 	SetChannelPermissions(channelID string, overwrites []normalized.Overwrite) error
 	// SendMessage posts a single message to a channel.
 	SendMessage(channelID string, msg normalized.Message) error
+	// CreateEmoji uploads a custom emoji to the target server.
+	// Errors are non-fatal; the orchestrator logs and continues.
+	CreateEmoji(e normalized.Emoji) error
 }

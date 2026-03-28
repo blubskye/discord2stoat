@@ -5,8 +5,12 @@ package discord
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/blubskye/discord2stoat/internal/normalized"
 )
 
 // Client wraps discordgo for reading a Discord server's structure and messages.
@@ -50,6 +54,51 @@ func (c *Client) FetchChannels() ([]*discordgo.Channel, error) {
 		return nil, fmt.Errorf("discord: fetch channels: %w", err)
 	}
 	return channels, nil
+}
+
+// FetchEmojis returns all non-managed custom emojis for the guild,
+// with their image data downloaded from the Discord CDN.
+func (c *Client) FetchEmojis() ([]normalized.Emoji, error) {
+	emojis, err := c.session.GuildEmojis(c.serverID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch emojis: %w", err)
+	}
+	result := make([]normalized.Emoji, 0, len(emojis))
+	for _, e := range emojis {
+		if e.Managed {
+			continue // skip integration-managed emojis (e.g. Twitch)
+		}
+		ext := "png"
+		if e.Animated {
+			ext = "gif"
+		}
+		url := fmt.Sprintf("https://cdn.discordapp.com/emojis/%s.%s?size=128", e.ID, ext)
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			log.Printf("discord: skip emoji %q: build request: %v", e.Name, err)
+			continue
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			log.Printf("discord: skip emoji %q: download failed", e.Name)
+			if resp != nil {
+				resp.Body.Close()
+			}
+			continue
+		}
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			log.Printf("discord: skip emoji %q: read body: %v", e.Name, err)
+			continue
+		}
+		result = append(result, normalized.Emoji{
+			Name:     e.Name,
+			Data:     data,
+			Animated: e.Animated,
+		})
+	}
+	return result, nil
 }
 
 // FetchMessages fetches up to limit messages from channelID, oldest first.

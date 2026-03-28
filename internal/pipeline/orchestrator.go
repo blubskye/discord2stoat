@@ -9,6 +9,7 @@ import (
 	"log"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/blubskye/discord2stoat/internal/normalized"
 	"github.com/blubskye/discord2stoat/internal/target"
 )
 
@@ -18,6 +19,7 @@ type DiscordFetcher interface {
 	FetchRoles() ([]*discordgo.Role, error)
 	FetchChannels() ([]*discordgo.Channel, error)
 	FetchMessages(channelID string, limit int, out chan<- *discordgo.Message, done <-chan struct{}) error
+	FetchEmojis() ([]normalized.Emoji, error)
 }
 
 // RunConfig holds everything the orchestrator needs.
@@ -43,10 +45,16 @@ func Run(ctx context.Context, cfg RunConfig) error {
 		return fmt.Errorf("fetch channels: %w", err)
 	}
 
+	emojis, err := cfg.Discord.FetchEmojis()
+	if err != nil {
+		log.Printf("fetch emojis: %v (skipping emoji clone)", err)
+		emojis = nil
+	}
+
 	// Phase A: run for each target sequentially (order doesn't matter, but simpler).
 	channelMaps := make(map[string]IDMap)
 	for name, t := range cfg.Targets {
-		result, err := RunPhaseA(ctx, t, name, roles, channels, cfg.ProgressCh)
+		result, err := RunPhaseA(ctx, t, name, roles, channels, emojis, cfg.ProgressCh)
 		if err != nil {
 			return fmt.Errorf("phase A [%s]: %w", name, err)
 		}

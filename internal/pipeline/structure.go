@@ -24,7 +24,7 @@ type StructureResult struct {
 	ChannelIDs IDMap // discordChannelID → targetChannelID
 }
 
-// RunPhaseA creates all roles, categories, channels, and permissions on t.
+// RunPhaseA creates all roles, categories, channels, permissions, and emojis on t.
 // It sends EventRoleCreated and EventStructureDone events on progressCh.
 func RunPhaseA(
 	ctx context.Context,
@@ -32,6 +32,7 @@ func RunPhaseA(
 	targetName string,
 	roles []*discordgo.Role,
 	channels []*discordgo.Channel,
+	emojis []normalized.Emoji,
 	progressCh chan<- ProgressEvent,
 ) (*StructureResult, error) {
 	result := &StructureResult{
@@ -205,6 +206,19 @@ func RunPhaseA(
 		}
 		if err := t.SetChannelPermissions(newChanID, overwrites); err != nil {
 			return nil, fmt.Errorf("phaseA[%s] SetChannelPermissions %q: %w", targetName, ch.Name, err)
+		}
+	}
+
+	// --- Step 7: Clone emojis (non-fatal per emoji) ---
+	for _, e := range emojis {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err := t.CreateEmoji(e); err != nil {
+			log.Printf("phaseA[%s] emoji %q: %v", targetName, e.Name, err)
+			// non-fatal: continue with remaining emojis
+		} else {
+			debug.Printf("[%s] emoji %q created", targetName, e.Name)
 		}
 	}
 

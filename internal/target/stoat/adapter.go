@@ -65,19 +65,24 @@ func (a *Adapter) CreateRole(r normalized.Role) (string, error) {
 	// Use HTTP.Request directly so we can capture the role ID from the response.
 	var resp roleCreateResponse
 	endpoint := revoltgo.EndpointServerRoles(a.serverID)
-	if err := a.session.HTTP.Request(http.MethodPost, endpoint, revoltgo.ServerRoleCreateData{
-		Name: r.Name,
-		Rank: rank,
-	}, &resp); err != nil {
+	err := withRetry(func() error {
+		return a.session.HTTP.Request(http.MethodPost, endpoint, revoltgo.ServerRoleCreateData{
+			Name: r.Name,
+			Rank: rank,
+		}, &resp)
+	})
+	if err != nil {
 		return "", fmt.Errorf("stoat CreateRole %q: %w", r.Name, err)
 	}
 	roleID := resp.ID
 
 	colour := intToCSS(r.Color)
 	hoist := r.Hoist
-	_, err := a.session.ServerRoleEdit(a.serverID, roleID, revoltgo.ServerRoleEditData{
-		Colour: colour,
-		Hoist:  &hoist,
+	_, err = withRetryVal(func() (*revoltgo.ServerRole, error) {
+		return a.session.ServerRoleEdit(a.serverID, roleID, revoltgo.ServerRoleEditData{
+			Colour: colour,
+			Hoist:  &hoist,
+		})
 	})
 	if err != nil {
 		return "", fmt.Errorf("stoat ServerRoleEdit %q: %w", r.Name, err)
@@ -89,9 +94,11 @@ func (a *Adapter) CreateRole(r normalized.Role) (string, error) {
 		Permissions revoltgo.PermissionOverwrite `json:"permissions"`
 	}
 	roleEndpoint := revoltgo.EndpointServerRole(a.serverID, roleID)
-	if err := a.session.HTTP.Request(http.MethodPatch, roleEndpoint, rolePermPatch{
-		Permissions: revoltgo.PermissionOverwrite{Allow: allow},
-	}, nil); err != nil {
+	if err := withRetry(func() error {
+		return a.session.HTTP.Request(http.MethodPatch, roleEndpoint, rolePermPatch{
+			Permissions: revoltgo.PermissionOverwrite{Allow: allow},
+		}, nil)
+	}); err != nil {
 		return "", fmt.Errorf("stoat set role permissions %q: %w", r.Name, err)
 	}
 
@@ -115,11 +122,13 @@ func (a *Adapter) CreateChannel(c normalized.Channel) (string, error) {
 		chType = revoltgo.ServerChannelCreateDataTypeVoice
 	}
 
-	created, err := a.session.ServerChannelCreate(a.serverID, revoltgo.ServerChannelCreateData{
-		Type:        chType,
-		Name:        c.Name,
-		Description: c.Topic,
-		NSFW:        c.NSFW,
+	created, err := withRetryVal(func() (*revoltgo.Channel, error) {
+		return a.session.ServerChannelCreate(a.serverID, revoltgo.ServerChannelCreateData{
+			Type:        chType,
+			Name:        c.Name,
+			Description: c.Topic,
+			NSFW:        c.NSFW,
+		})
 	})
 	if err != nil {
 		return "", fmt.Errorf("stoat CreateChannel %q: %w", c.Name, err)
@@ -175,8 +184,10 @@ func (a *Adapter) SetChannelOrder(updates []normalized.ChannelOrder) error {
 		cats = append(cats, a.pendingCategories[id])
 	}
 
-	_, err := a.session.ServerEdit(a.serverID, revoltgo.ServerEditData{
-		Categories: cats,
+	_, err := withRetryVal(func() (*revoltgo.Server, error) {
+		return a.session.ServerEdit(a.serverID, revoltgo.ServerEditData{
+			Categories: cats,
+		})
 	})
 	if err != nil {
 		return fmt.Errorf("stoat SetChannelOrder (server edit): %w", err)
@@ -192,15 +203,52 @@ func (a *Adapter) SetChannelPermissions(channelID string, overwrites []normalize
 			continue
 		}
 		allow, deny := mapPermissions(ow.Allow, ow.Deny)
-		err := a.session.ChannelPermissionsSet(channelID, ow.RoleID, revoltgo.PermissionOverwrite{
-			Allow: allow,
-			Deny:  deny,
-		})
-		if err != nil {
+		if err := withRetry(func() error {
+			return a.session.ChannelPermissionsSet(channelID, ow.RoleID, revoltgo.PermissionOverwrite{
+				Allow: allow,
+				Deny:  deny,
+			})
+		}); err != nil {
 			return fmt.Errorf("stoat SetChannelPermissions channel=%s role=%s: %w", channelID, ow.RoleID, err)
 		}
 	}
 	return nil
+}
+
+// CreateEmoji uploads a custom emoji to the Stoat server via Autumn CDN then the emoji API.
+// The emoji ID on Revolt is the Autumn file ID of the uploaded image.
+func (a *Adapter) CreateEmoji(e normalized.Emoji) error {
+	// Upload image to Autumn CDN to get the file ID (which becomes the emoji ID).
+	fa, err := withRetryVal(func() (*revoltgo.FileAttachment, error) {
+		return a.session.AttachmentUpload(&revoltgo.File{
+			Name:   e.Name + emojiExt(e.Animated),
+			Reader: bytes.NewReader(e.Data),
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("stoat CreateEmoji %q upload: %w", e.Name, err)
+	}
+
+	_, err = withRetryVal(func() (*revoltgo.Emoji, error) {
+		return a.session.EmojiCreate(fa.ID, revoltgo.EmojiCreateData{
+			Name: e.Name,
+			Parent: &revoltgo.EmojiParent{
+				Type: "Server",
+				ID:   a.serverID,
+			},
+		})
+	})
+	if err != nil {
+		return fmt.Errorf("stoat CreateEmoji %q: %w", e.Name, err)
+	}
+	return nil
+}
+
+func emojiExt(animated bool) string {
+	if animated {
+		return ".gif"
+	}
+	return ".png"
 }
 
 // SendMessage posts a message (with any attachments) to a Stoat channel.
@@ -215,9 +263,11 @@ func (a *Adapter) SendMessage(channelID string, msg normalized.Message) error {
 	// Failed uploads are logged and skipped; the message is still sent with remaining attachments.
 	var fileIDs []string
 	for _, att := range msg.Attachments {
-		fa, err := a.session.AttachmentUpload(&revoltgo.File{
-			Name:   att.Filename,
-			Reader: bytes.NewReader(att.Data),
+		fa, err := withRetryVal(func() (*revoltgo.FileAttachment, error) {
+			return a.session.AttachmentUpload(&revoltgo.File{
+				Name:   att.Filename,
+				Reader: bytes.NewReader(att.Data),
+			})
 		})
 		if err != nil {
 			log.Printf("stoat upload attachment %s: %v", att.Filename, err)
@@ -231,9 +281,11 @@ func (a *Adapter) SendMessage(channelID string, msg normalized.Message) error {
 		return nil
 	}
 
-	_, err := a.session.ChannelMessageSend(channelID, revoltgo.MessageSend{
-		Content:     content,
-		Attachments: fileIDs,
+	_, err := withRetryVal(func() (*revoltgo.Message, error) {
+		return a.session.ChannelMessageSend(channelID, revoltgo.MessageSend{
+			Content:     content,
+			Attachments: fileIDs,
+		})
 	})
 	if err != nil {
 		return fmt.Errorf("stoat SendMessage channel=%s: %w", channelID, err)

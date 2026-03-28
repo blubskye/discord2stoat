@@ -67,3 +67,10 @@ type Attachment struct {
 	Filename string
 	Data     []byte
 }
+
+// Emoji is a custom server emoji downloaded from Discord.
+type Emoji struct {
+	Name     string
+	Data     []byte // image bytes (PNG for static, GIF for animated)
+	Animated bool
+}

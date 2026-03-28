@@ -36,6 +36,7 @@ func FetchServerName(token, serverID string) string {
 type Adapter struct {
 	guilds   rest.Guilds
 	channels rest.Channels
+	emojis   rest.Emojis
 	guildID  snowflake.ID
 }
 
@@ -49,6 +50,7 @@ func New(token, guildID string) (*Adapter, error) {
 	return &Adapter{
 		guilds:   rest.NewGuilds(client),
 		channels: rest.NewChannels(client, fluxer.AllowedMentions{}),
+		emojis:   rest.NewEmojis(client),
 		guildID:  id,
 	}, nil
 }
@@ -204,6 +206,23 @@ func (a *Adapter) SendMessage(channelID string, msg normalized.Message) error {
 	_, err = a.channels.CreateMessage(cid, mc)
 	if err != nil {
 		return fmt.Errorf("fluxer SendMessage channel=%s: %w", channelID, err)
+	}
+	return nil
+}
+
+// CreateEmoji creates a custom emoji in the Fluxer guild.
+func (a *Adapter) CreateEmoji(e normalized.Emoji) error {
+	iconType := fluxer.IconTypePNG
+	if e.Animated {
+		iconType = fluxer.IconTypeGIF
+	}
+	icon := fluxer.NewIconRaw(iconType, e.Data)
+	_, err := a.emojis.CreateEmoji(a.guildID, fluxer.EmojiCreate{
+		Name:  e.Name,
+		Image: *icon,
+	})
+	if err != nil {
+		return fmt.Errorf("fluxer CreateEmoji %q: %w", e.Name, err)
 	}
 	return nil
 }
