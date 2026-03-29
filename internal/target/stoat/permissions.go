@@ -34,6 +34,11 @@ var discordToRevolt = map[int64]int64{
 	discordgo.PermissionMentionEveryone:    int64(revoltgo.PermissionMentionEveryone),
 }
 
+// serverOnlyMask covers the server-only permission bits in Revolt (bits 1–13).
+// These must not appear in channel permission overwrites or Revolt returns 422.
+// Bit 0 (ManageChannel) is channel-valid and is intentionally excluded from the mask.
+const serverOnlyMask int64 = (1 << 14) - 2 // bits 1–13 inclusive
+
 // mapPermissions converts Discord allow/deny int64 permission bits to Revolt
 // PermissionOverwrite Allow/Deny values. Unknown Discord bits are silently ignored.
 // If the same bit appears in both discordAllow and discordDeny, both output words
@@ -48,5 +53,14 @@ func mapPermissions(discordAllow, discordDeny int64) (allow, deny int64) {
 			deny |= revoltPerm
 		}
 	}
+	return
+}
+
+// mapChannelPermissions is like mapPermissions but strips server-only bits that
+// are invalid in channel permission overwrites.
+func mapChannelPermissions(discordAllow, discordDeny int64) (allow, deny int64) {
+	allow, deny = mapPermissions(discordAllow, discordDeny)
+	allow &^= serverOnlyMask
+	deny &^= serverOnlyMask
 	return
 }

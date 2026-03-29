@@ -274,7 +274,10 @@ func (a *Adapter) SetChannelPermissions(channelID string, overwrites []normalize
 		if ow.RoleID == "" {
 			continue
 		}
-		allow, deny := mapPermissions(ow.Allow, ow.Deny)
+		allow, deny := mapChannelPermissions(ow.Allow, ow.Deny)
+		if allow == 0 && deny == 0 {
+			continue // nothing to set after stripping server-only bits
+		}
 		if err := withRetry(func() error {
 			return a.session.ChannelPermissionsSet(channelID, ow.RoleID, revoltgo.PermissionOverwrite{
 				Allow: allow,
